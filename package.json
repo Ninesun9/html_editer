@@ -1,0 +1,30 @@
+{
+  "name": "html-editer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "out/main/index.cjs",
+  "scripts": {
+    "dev": "set ELECTRON_RUN_AS_NODE=&& electron-vite dev",
+    "build": "vue-tsc --noEmit && electron-vite build",
+    "preview": "set ELECTRON_RUN_AS_NODE=&& electron-vite preview",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "lucide-vue-next": "^1.0.0",
+    "monaco-editor": "^0.52.2",
+    "parse5": "^8.0.1",
+    "pinia": "^3.0.3",
+    "prettier": "^3.6.0",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "@vitejs/plugin-vue": "^5.2.4",
+    "electron": "^31.7.7",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.8.3",
+    "vite": "^5.4.19",
+    "vue-tsc": "^2.2.10"
+  }
+}
