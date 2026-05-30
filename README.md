@@ -1,8 +1,8 @@
-# AI HTML Editor / AI HTML 编辑器
+# HtmlFox / HtmlFox HTML 编辑器
 
-A lightweight desktop HTML editor for opening, editing, previewing, formatting, and saving local HTML files. It is built with Electron, Vue 3, TypeScript, Monaco Editor, and Vite.
+HtmlFox is a lightweight AI-assisted desktop HTML editor for opening, editing, previewing, formatting, and saving local HTML files. It is built with Electron, Vue 3, TypeScript, Monaco Editor, and Vite.
 
-一款轻量级桌面 HTML 编辑器，用于打开、编辑、预览、格式化并保存本地 HTML 文件。项目基于 Electron、Vue 3、TypeScript、Monaco Editor 和 Vite 构建。
+HtmlFox 是一款轻量级 AI 辅助桌面 HTML 编辑器，用于打开、编辑、预览、格式化并保存本地 HTML 文件。项目基于 Electron、Vue 3、TypeScript、Monaco Editor 和 Vite 构建。
 
 ## 中文说明
 
@@ -18,6 +18,7 @@ A lightweight desktop HTML editor for opening, editing, previewing, formatting, 
 - 记录并重新打开最近使用的文件。
 - 点击预览区域中的元素，可在左侧源码中定位到对应标签。
 - 双击预览区域中的叶子文本，可直接进行 inline edit。
+- 通过 HtmlFox AI 面板调用 OpenAI-compatible 接口，按自然语言修改整页或当前选中的元素。
 - 支持中英文界面切换，并持久化保存语言偏好。
 
 ### 技术栈
@@ -80,6 +81,7 @@ npm run build
 - 预览定位：单击右侧预览中的元素，左侧 Monaco 会自动选中并滚动到对应 HTML 标签。
 - 预览文本编辑：双击右侧预览中的纯文本叶子节点，直接修改文本；按 `Enter` 或失焦提交，按 `Esc` 取消。
 - 语言切换：点击工具栏语言按钮，在中文和英文界面之间切换。
+- AI 修改：点击工具栏 `AI` 打开 HtmlFox AI，填写 Base URL、Model 和 API Key 后，可以用自然语言修改整个文档或预览区选中的元素。
 
 ### 项目结构
 
@@ -118,6 +120,7 @@ src/
 - Keep and reopen recent files.
 - Click an element in the preview to reveal the matching source tag in Monaco.
 - Double-click leaf text in the preview to edit it inline.
+- Use the HtmlFox AI panel with an OpenAI-compatible endpoint to edit the whole document or the selected preview element using natural language.
 - Switch between English and Chinese UI, with the preference persisted locally.
 
 ### Tech Stack
@@ -180,6 +183,7 @@ Build output is written to `out/` by default.
 - Preview source selection: click an element in the preview, and Monaco selects the corresponding HTML tag.
 - Inline preview editing: double-click editable leaf text in the preview, edit it directly, press `Enter` or blur to commit, or press `Esc` to cancel.
 - Language switch: use the toolbar language button to switch between English and Chinese.
+- AI editing: click `AI` in the toolbar, configure Base URL, Model, and API key, then describe the change you want for the whole document or selected preview element.
 
 ### Project Structure
 

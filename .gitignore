@@ -6,6 +6,7 @@ coverage/
 release/
 
 *.log
+*.tsbuildinfo
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

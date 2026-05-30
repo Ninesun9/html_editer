@@ -1,8 +1,8 @@
-# AI HTML Editor Project Design
+# HtmlFox Project Design
 
 ## 1. Product positioning
 
-AI HTML Editor is a lightweight desktop tool for **editing AI-generated HTML files locally**.
+HtmlFox is a lightweight desktop tool for **editing AI-generated HTML files locally**.
 
 It is designed for users who:
 

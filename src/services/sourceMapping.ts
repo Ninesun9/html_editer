@@ -8,6 +8,8 @@ export const EDITING_TEXT_ATTR = 'data-html-editor-editing'
 export type SourceRange = {
   startOffset: number
   endOffset: number
+  fullStartOffset: number
+  fullEndOffset: number
   tagName: string
 }
 
@@ -31,6 +33,8 @@ type SourceElement = {
   tagName: string
   startOffset: number
   endOffset: number
+  fullStartOffset: number
+  fullEndOffset: number
   insertOffset: number
   textRange: EditableTextRange | null
 }
@@ -121,11 +125,14 @@ function collectSourceElements(source: string): SourceElement[] {
   function visit(node: Node): void {
     if (isElementNode(node)) {
       const startTag = node.sourceCodeLocation?.startTag
-      if (startTag) {
+      const sourceLocation = node.sourceCodeLocation
+      if (startTag && sourceLocation) {
         elements.push({
           tagName: node.tagName,
           startOffset: startTag.startOffset,
           endOffset: startTag.endOffset,
+          fullStartOffset: sourceLocation.startOffset,
+          fullEndOffset: sourceLocation.endOffset,
           insertOffset: getInsertionOffset(source, startTag.startOffset, startTag.endOffset),
           textRange: getEditableTextRange(node)
         })
@@ -176,6 +183,8 @@ export function createPreviewDocument(
     mappings[nodeId] = {
       startOffset: element.startOffset,
       endOffset: element.endOffset,
+      fullStartOffset: element.fullStartOffset,
+      fullEndOffset: element.fullEndOffset,
       tagName: element.tagName
     }
 

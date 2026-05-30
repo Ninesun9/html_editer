@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import AiPanel from './components/AiPanel.vue'
 import AppToolbar from './components/AppToolbar.vue'
 import FileSidebar from './components/FileSidebar.vue'
 import MonacoEditor from './components/MonacoEditor.vue'
 import PreviewPane from './components/PreviewPane.vue'
+import type { AiEditScope, AiSettingsInput } from './services/aiTypes'
 import { defaultHtml } from './services/defaultHtml'
 import { formatHtml } from './services/formatHtml'
 import {
@@ -13,7 +15,7 @@ import {
   type AppLanguage,
   type TranslationKey
 } from './services/i18n'
-import { createPreviewDocument, replaceSourceText } from './services/sourceMapping'
+import { createPreviewDocument, replaceSourceText, type SourceRange } from './services/sourceMapping'
 import { useDocumentStore } from './stores/document'
 
 const store = useDocumentStore()
@@ -22,6 +24,8 @@ const selectedSourceId = ref<string | null>(null)
 const language = ref<AppLanguage>(loadInitialLanguage())
 const currentStatus = ref<{ key: TranslationKey; params?: Record<string, string> }>({ key: 'status.ready' })
 const currentError = ref<{ key: TranslationKey; params?: Record<string, string> } | null>(null)
+const aiPanelOpen = ref(false)
+const aiLoading = ref(false)
 
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -48,6 +52,20 @@ const selectedSourceRange = computed(() => {
   }
 
   return previewDocument.value.mappings[selectedSourceId.value] ?? null
+})
+
+const hasSelectedSource = computed(() => selectedSourceRange.value !== null)
+
+const selectedSourceTag = computed(() => selectedSourceRange.value?.tagName ?? null)
+
+const selectedSourceSnippet = computed(() => {
+  const range = selectedSourceRange.value
+  if (!range) {
+    return null
+  }
+
+  const { start, end } = getFullSourceOffsets(range)
+  return store.html.slice(start, end)
 })
 
 const copy = computed(() => ({
@@ -84,6 +102,13 @@ function switchLanguage(nextLanguage: AppLanguage): void {
   if (currentError.value) {
     store.setError(t(currentError.value.key, currentError.value.params))
   }
+}
+
+function getFullSourceOffsets(range: SourceRange): { start: number; end: number } {
+  const valueLength = store.html.length
+  const start = Math.max(0, Math.min(range.fullStartOffset, valueLength))
+  const end = Math.max(start, Math.min(range.fullEndOffset, valueLength))
+  return { start, end }
 }
 
 function schedulePreviewRefresh(html: string): void {
@@ -220,6 +245,64 @@ function editPreviewText(textId: string, value: string): void {
   setError(null)
 }
 
+function toggleAiPanel(): void {
+  aiPanelOpen.value = !aiPanelOpen.value
+}
+
+function handleAiSettingsSaved(): void {
+  setStatus('status.aiSettingsSaved')
+  setError(null)
+}
+
+async function runAiEdit(payload: {
+  instruction: string
+  scope: AiEditScope
+  settings: AiSettingsInput
+}): Promise<void> {
+  const instruction = payload.instruction.trim()
+
+  if (!instruction) {
+    setError('error.aiEmptyInstruction')
+    return
+  }
+
+  const selectedRange = selectedSourceRange.value
+  if (payload.scope === 'selection' && !selectedRange) {
+    setError('error.aiNoSelection')
+    return
+  }
+
+  aiLoading.value = true
+
+  try {
+    const result = await window.electronAPI.runAiEdit({
+      instruction,
+      scope: payload.scope,
+      html: store.html,
+      selectedHtml: payload.scope === 'selection' ? selectedSourceSnippet.value : null,
+      settings: payload.settings
+    })
+
+    let nextHtml = result.content
+    if (result.scope === 'selection' && selectedRange) {
+      const { start, end } = getFullSourceOffsets(selectedRange)
+      nextHtml = `${store.html.slice(0, start)}${result.content}${store.html.slice(end)}`
+      setStatus('status.aiAppliedSelection')
+    } else {
+      setStatus('status.aiAppliedDocument')
+    }
+
+    store.updateHtml(nextHtml)
+    previewHtml.value = nextHtml
+    selectedSourceId.value = null
+    setError(null)
+  } catch (error) {
+    setError('error.aiRequest')
+  } finally {
+    aiLoading.value = false
+  }
+}
+
 watch(
   () => store.html,
   (html) => {
@@ -245,11 +328,13 @@ onMounted(async () => {
       :dirty="store.dirty"
       :device-mode="store.deviceMode"
       :language="language"
+      :ai-open="aiPanelOpen"
       @create="createDocument"
       @open="openFile"
       @save="saveFile"
       @save-as="saveFileAs"
       @format="runFormat"
+      @toggle-ai="toggleAiPanel"
       @switch-device="store.setDeviceMode"
       @switch-language="switchLanguage"
     />
@@ -293,5 +378,16 @@ onMounted(async () => {
         />
       </section>
     </main>
+
+    <AiPanel
+      :open="aiPanelOpen"
+      :language="language"
+      :has-selection="hasSelectedSource"
+      :selected-tag="selectedSourceTag"
+      :loading="aiLoading"
+      @close="aiPanelOpen = false"
+      @run="runAiEdit"
+      @settings-saved="handleAiSettingsSaved"
+    />
   </div>
 </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import {
+  Bot,
   FilePlus2,
   FolderOpen,
   Languages,
@@ -18,6 +19,7 @@ const props = defineProps<{
   dirty: boolean
   deviceMode: DeviceMode
   language: AppLanguage
+  aiOpen: boolean
 }>()
 
 defineEmits<{
@@ -26,11 +28,14 @@ defineEmits<{
   save: []
   saveAs: []
   format: []
+  toggleAi: []
   switchDevice: [mode: DeviceMode]
   switchLanguage: [language: AppLanguage]
 }>()
 
 const copy = computed(() => ({
+  ai: translate(props.language, 'toolbar.ai'),
+  aiTitle: translate(props.language, 'toolbar.aiTitle'),
   desktop: translate(props.language, 'device.desktop'),
   format: translate(props.language, 'toolbar.format'),
   formatTitle: translate(props.language, 'toolbar.formatTitle'),
@@ -79,6 +84,15 @@ const nextLanguageLabel = computed(() =>
       <button class="toolbar__button" :title="copy.formatTitle" @click="$emit('format')">
         <WandSparkles :size="16" />
         <span>{{ copy.format }}</span>
+      </button>
+      <button
+        class="toolbar__button"
+        :class="{ 'toolbar__button--active': aiOpen }"
+        :title="copy.aiTitle"
+        @click="$emit('toggleAi')"
+      >
+        <Bot :size="16" />
+        <span>{{ copy.ai }}</span>
       </button>
     </div>
 

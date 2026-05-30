@@ -5,5 +5,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openRecentFile: (filePath: string) => ipcRenderer.invoke('file:openRecent', filePath),
   saveFile: (filePath: string, content: string) => ipcRenderer.invoke('file:save', filePath, content),
   saveFileAs: (content: string) => ipcRenderer.invoke('file:saveAs', content),
-  listRecentFiles: () => ipcRenderer.invoke('file:listRecent')
+  listRecentFiles: () => ipcRenderer.invoke('file:listRecent'),
+  loadAiSettings: () => ipcRenderer.invoke('ai:loadSettings'),
+  saveAiSettings: (settings: unknown) => ipcRenderer.invoke('ai:saveSettings', settings),
+  runAiEdit: (payload: unknown) => ipcRenderer.invoke('ai:editHtml', payload)
 })
