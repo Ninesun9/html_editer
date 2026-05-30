@@ -1,5 +1,16 @@
 export type AiEditScope = 'document' | 'selection'
 
+export type AiConversationMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export type AiSourceSelection = {
+  startOffset: number
+  endOffset: number
+  text: string
+}
+
 export type AiSettingsView = {
   baseUrl: string
   model: string
@@ -17,6 +28,7 @@ export type AiEditPayload = {
   scope: AiEditScope
   html: string
   selectedHtml: string | null
+  conversation: AiConversationMessage[]
   settings: AiSettingsInput
 }
 
@@ -25,3 +37,7 @@ export type AiEditResult = {
   scope: AiEditScope
 }
 
+export type AiTestResult = {
+  ok: boolean
+  message: string
+}

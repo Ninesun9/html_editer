@@ -8,5 +8,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listRecentFiles: () => ipcRenderer.invoke('file:listRecent'),
   loadAiSettings: () => ipcRenderer.invoke('ai:loadSettings'),
   saveAiSettings: (settings: unknown) => ipcRenderer.invoke('ai:saveSettings', settings),
+  testAiConnection: (settings: unknown) => ipcRenderer.invoke('ai:testConnection', settings),
   runAiEdit: (payload: unknown) => ipcRenderer.invoke('ai:editHtml', payload)
 })

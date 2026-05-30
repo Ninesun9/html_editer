@@ -5,7 +5,7 @@ import AppToolbar from './components/AppToolbar.vue'
 import FileSidebar from './components/FileSidebar.vue'
 import MonacoEditor from './components/MonacoEditor.vue'
 import PreviewPane from './components/PreviewPane.vue'
-import type { AiEditScope, AiSettingsInput } from './services/aiTypes'
+import type { AiConversationMessage, AiEditScope, AiSettingsInput, AiSourceSelection } from './services/aiTypes'
 import { defaultHtml } from './services/defaultHtml'
 import { formatHtml } from './services/formatHtml'
 import {
@@ -26,6 +26,8 @@ const currentStatus = ref<{ key: TranslationKey; params?: Record<string, string>
 const currentError = ref<{ key: TranslationKey; params?: Record<string, string> } | null>(null)
 const aiPanelOpen = ref(false)
 const aiLoading = ref(false)
+const aiSourceSelection = ref<AiSourceSelection | null>(null)
+const aiConversation = ref<AiConversationMessage[]>([])
 
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -54,8 +56,6 @@ const selectedSourceRange = computed(() => {
   return previewDocument.value.mappings[selectedSourceId.value] ?? null
 })
 
-const hasSelectedSource = computed(() => selectedSourceRange.value !== null)
-
 const selectedSourceTag = computed(() => selectedSourceRange.value?.tagName ?? null)
 
 const selectedSourceSnippet = computed(() => {
@@ -68,7 +68,34 @@ const selectedSourceSnippet = computed(() => {
   return store.html.slice(start, end)
 })
 
+const activeSourceSelectionSnippet = computed(() => {
+  const selection = aiSourceSelection.value
+  if (!selection) {
+    return null
+  }
+
+  const { start, end } = getSourceSelectionOffsets(selection)
+  return store.html.slice(start, end)
+})
+
+const hasAiSelection = computed(() => aiSourceSelection.value !== null || selectedSourceRange.value !== null)
+
+const aiSelectionLabel = computed(() => {
+  const sourceSelection = aiSourceSelection.value
+  if (sourceSelection) {
+    const count = String(activeSourceSelectionSnippet.value?.length ?? sourceSelection.text.length)
+    return t('ai.sourceSelectionLabel', { count })
+  }
+
+  if (selectedSourceTag.value) {
+    return t('ai.previewSelectionLabel', { tag: selectedSourceTag.value })
+  }
+
+  return null
+})
+
 const copy = computed(() => ({
+  aiEditorAction: t('editor.aiModifySelection'),
   dismiss: t('common.dismiss'),
   html: t('app.html'),
   preview: t('app.preview'),
@@ -111,6 +138,13 @@ function getFullSourceOffsets(range: SourceRange): { start: number; end: number 
   return { start, end }
 }
 
+function getSourceSelectionOffsets(selection: AiSourceSelection): { start: number; end: number } {
+  const valueLength = store.html.length
+  const start = Math.max(0, Math.min(selection.startOffset, valueLength))
+  const end = Math.max(start, Math.min(selection.endOffset, valueLength))
+  return { start, end }
+}
+
 function schedulePreviewRefresh(html: string): void {
   if (previewTimer) {
     clearTimeout(previewTimer)
@@ -133,6 +167,8 @@ function createDocument(): void {
 
   store.setDocument({ filePath: null, html: defaultHtml })
   selectedSourceId.value = null
+  aiSourceSelection.value = null
+  aiConversation.value = []
   previewHtml.value = defaultHtml
   setStatus('status.newDocument')
   setError(null)
@@ -147,6 +183,8 @@ async function openFile(): Promise<void> {
 
     store.setDocument({ filePath: result.path, html: result.content })
     selectedSourceId.value = null
+    aiSourceSelection.value = null
+    aiConversation.value = []
     previewHtml.value = result.content
     setStatus('status.fileOpened')
     setError(null)
@@ -161,6 +199,8 @@ async function openRecent(filePath: string): Promise<void> {
     const result = await window.electronAPI.openRecentFile(filePath)
     store.setDocument({ filePath: result.path, html: result.content })
     selectedSourceId.value = null
+    aiSourceSelection.value = null
+    aiConversation.value = []
     previewHtml.value = result.content
     setStatus('status.recentOpened')
     setError(null)
@@ -208,6 +248,8 @@ async function runFormat(): Promise<void> {
     const formatted = await formatHtml(store.html)
     store.updateHtml(formatted)
     selectedSourceId.value = null
+    aiSourceSelection.value = null
+    aiConversation.value = []
     previewHtml.value = formatted
     setStatus('status.formatted')
     setError(null)
@@ -218,6 +260,9 @@ async function runFormat(): Promise<void> {
 
 function updateHtml(nextHtml: string): void {
   store.updateHtml(nextHtml)
+  if (!aiLoading.value) {
+    aiSourceSelection.value = null
+  }
 }
 
 function selectPreviewSource(nodeId: string): void {
@@ -226,6 +271,8 @@ function selectPreviewSource(nodeId: string): void {
     return
   }
 
+  aiSourceSelection.value = null
+  aiConversation.value = []
   selectedSourceId.value = nodeId
   setStatus('status.selectedPreview', { tag: range.tagName })
   setError(null)
@@ -240,6 +287,8 @@ function editPreviewText(textId: string, value: string): void {
   const nextHtml = replaceSourceText(previewHtml.value, range, value)
   store.updateHtml(nextHtml)
   previewHtml.value = nextHtml
+  aiSourceSelection.value = null
+  aiConversation.value = []
   selectedSourceId.value = textId.replace(/^text-/, 'node-')
   setStatus('status.editedText', { tag: range.tagName })
   setError(null)
@@ -249,9 +298,22 @@ function toggleAiPanel(): void {
   aiPanelOpen.value = !aiPanelOpen.value
 }
 
+function startAiSourceEdit(selection: AiSourceSelection): void {
+  aiSourceSelection.value = selection
+  selectedSourceId.value = null
+  aiConversation.value = []
+  aiPanelOpen.value = true
+  setStatus('status.aiSourceSelection')
+  setError(null)
+}
+
 function handleAiSettingsSaved(): void {
   setStatus('status.aiSettingsSaved')
   setError(null)
+}
+
+function clearAiConversation(): void {
+  aiConversation.value = []
 }
 
 async function runAiEdit(payload: {
@@ -267,36 +329,67 @@ async function runAiEdit(payload: {
   }
 
   const selectedRange = selectedSourceRange.value
-  if (payload.scope === 'selection' && !selectedRange) {
+  const sourceSelection = aiSourceSelection.value
+  const selectedHtml =
+    payload.scope === 'selection'
+      ? sourceSelection
+        ? activeSourceSelectionSnippet.value
+        : selectedSourceSnippet.value
+      : null
+
+  if (payload.scope === 'selection' && !selectedHtml) {
     setError('error.aiNoSelection')
     return
   }
 
   aiLoading.value = true
+  const previousConversation = aiConversation.value.slice(-8)
+  aiConversation.value = [...aiConversation.value, { role: 'user', content: instruction }]
 
   try {
     const result = await window.electronAPI.runAiEdit({
       instruction,
       scope: payload.scope,
       html: store.html,
-      selectedHtml: payload.scope === 'selection' ? selectedSourceSnippet.value : null,
+      selectedHtml,
+      conversation: previousConversation,
       settings: payload.settings
     })
 
     let nextHtml = result.content
-    if (result.scope === 'selection' && selectedRange) {
+    if (result.scope === 'selection' && sourceSelection) {
+      const { start, end } = getSourceSelectionOffsets(sourceSelection)
+      nextHtml = `${store.html.slice(0, start)}${result.content}${store.html.slice(end)}`
+      aiSourceSelection.value = {
+        startOffset: start,
+        endOffset: start + result.content.length,
+        text: result.content
+      }
+      setStatus('status.aiAppliedSelection')
+    } else if (result.scope === 'selection' && selectedRange) {
       const { start, end } = getFullSourceOffsets(selectedRange)
       nextHtml = `${store.html.slice(0, start)}${result.content}${store.html.slice(end)}`
+      aiSourceSelection.value = {
+        startOffset: start,
+        endOffset: start + result.content.length,
+        text: result.content
+      }
       setStatus('status.aiAppliedSelection')
     } else {
+      aiSourceSelection.value = null
       setStatus('status.aiAppliedDocument')
     }
 
     store.updateHtml(nextHtml)
     previewHtml.value = nextHtml
     selectedSourceId.value = null
+    aiConversation.value = [...aiConversation.value, { role: 'assistant', content: result.content }]
     setError(null)
   } catch (error) {
+    aiConversation.value = [
+      ...aiConversation.value,
+      { role: 'assistant', content: t('error.aiRequest') }
+    ]
     setError('error.aiRequest')
   } finally {
     aiLoading.value = false
@@ -360,7 +453,9 @@ onMounted(async () => {
         <MonacoEditor
           :model-value="store.html"
           :selection-range="selectedSourceRange"
+          :ai-action-label="copy.aiEditorAction"
           @update:model-value="updateHtml"
+          @ai-edit-selection="startAiSourceEdit"
         />
       </section>
 
@@ -382,11 +477,13 @@ onMounted(async () => {
     <AiPanel
       :open="aiPanelOpen"
       :language="language"
-      :has-selection="hasSelectedSource"
-      :selected-tag="selectedSourceTag"
+      :has-selection="hasAiSelection"
+      :selection-label="aiSelectionLabel"
+      :messages="aiConversation"
       :loading="aiLoading"
       @close="aiPanelOpen = false"
       @run="runAiEdit"
+      @clear-conversation="clearAiConversation"
       @settings-saved="handleAiSettingsSaved"
     />
   </div>

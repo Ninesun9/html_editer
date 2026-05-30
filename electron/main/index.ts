@@ -40,7 +40,18 @@ type AiEditPayload = {
   scope: AiEditScope
   html: string
   selectedHtml: string | null
+  conversation: AiConversationMessage[]
   settings: AiSettingsInput
+}
+
+type AiConversationMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+type AiTestResult = {
+  ok: boolean
+  message: string
 }
 
 type ChatCompletionResponse = {
@@ -199,6 +210,23 @@ function normalizeAiSettingsInput(value: unknown): AiSettingsInput {
   }
 }
 
+function normalizeAiConversation(value: unknown): AiConversationMessage[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .filter((item): item is Record<string, unknown> => isRecord(item))
+    .map(
+      (item): AiConversationMessage => ({
+        role: item.role === 'assistant' ? 'assistant' : 'user',
+        content: getString(item.content).trim()
+      })
+    )
+    .filter((item) => item.content.length > 0)
+    .slice(-8)
+}
+
 function normalizeAiEditPayload(value: unknown): AiEditPayload {
   if (!isRecord(value)) {
     throw new Error('Invalid AI edit payload')
@@ -212,6 +240,7 @@ function normalizeAiEditPayload(value: unknown): AiEditPayload {
     scope,
     html: getString(value.html),
     selectedHtml,
+    conversation: normalizeAiConversation(value.conversation),
     settings: normalizeAiSettingsInput(value.settings)
   }
 }
@@ -249,17 +278,21 @@ function getChatCompletionContent(data: ChatCompletionResponse): string {
   return ''
 }
 
-function createAiMessages(payload: AiEditPayload): Array<{ role: 'system' | 'user'; content: string }> {
+function trimStatusMessage(value: string): string {
+  return value.replace(/\s+/g, ' ').trim().slice(0, 240)
+}
+
+function createAiMessages(payload: AiEditPayload): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
   const selectionInstruction =
     payload.scope === 'selection'
-      ? 'Return only the replacement HTML for the selected element. Do not return the full document.'
+      ? 'Return only the replacement content for the selected source range. Do not return the full document.'
       : 'Return the complete updated HTML document.'
 
   const selectedBlock = payload.selectedHtml
     ? `Selected HTML:\n${payload.selectedHtml}`
     : 'Selected HTML: none'
 
-  return [
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
     {
       role: 'system',
       content: [
@@ -272,13 +305,79 @@ function createAiMessages(payload: AiEditPayload): Array<{ role: 'system' | 'use
     {
       role: 'user',
       content: [
-        `User request:\n${payload.instruction}`,
+        'Editing context:',
         `Edit scope: ${payload.scope}`,
         selectedBlock,
         `Current full HTML document:\n${payload.html}`
       ].join('\n\n')
     }
   ]
+
+  messages.push(...payload.conversation)
+  messages.push({
+    role: 'user',
+    content: `User request:\n${payload.instruction}`
+  })
+
+  return messages
+}
+
+async function testAiConnection(value: unknown): Promise<AiTestResult> {
+  const previousSettings = await readAiSettings()
+  const settings = mergeAiSettings(normalizeAiSettingsInput(value), previousSettings)
+
+  if (!settings.apiKey) {
+    return {
+      ok: false,
+      message: 'Missing API key'
+    }
+  }
+
+  await writeAiSettings(settings)
+
+  try {
+    const response = await fetch(buildChatCompletionsUrl(settings.baseUrl), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${settings.apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: settings.model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a connectivity test. Reply with OK only.'
+          },
+          {
+            role: 'user',
+            content: 'Reply OK if this request reached the model.'
+          }
+        ]
+      })
+    })
+
+    const responseText = await response.text()
+    if (!response.ok) {
+      return {
+        ok: false,
+        message: `HTTP ${response.status}: ${trimStatusMessage(responseText)}`
+      }
+    }
+
+    const data = JSON.parse(responseText) as ChatCompletionResponse
+    const content = trimStatusMessage(getChatCompletionContent(data)) || 'OK'
+
+    return {
+      ok: true,
+      message: content
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? trimStatusMessage(error.message) : 'Unknown error'
+    }
+  }
 }
 
 async function runAiHtmlEdit(payload: AiEditPayload): Promise<{ content: string; scope: AiEditScope }> {
@@ -420,6 +519,10 @@ app.whenReady().then(async () => {
     const settings = mergeAiSettings(normalizeAiSettingsInput(value), previousSettings)
     await writeAiSettings(settings)
     return toAiSettingsView(settings)
+  })
+
+  ipcMain.handle('ai:testConnection', async (_event, value: unknown) => {
+    return testAiConnection(value)
   })
 
   ipcMain.handle('ai:editHtml', async (_event, value: unknown) => {

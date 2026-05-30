@@ -1,20 +1,24 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { AiSourceSelection } from '../services/aiTypes'
 import { monaco } from '../services/monaco'
 import type { SourceRange } from '../services/sourceMapping'
 
 const props = defineProps<{
   modelValue: string
   selectionRange: SourceRange | null
+  aiActionLabel: string
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
+  aiEditSelection: [selection: AiSourceSelection]
 }>()
 
 const rootRef = ref<HTMLElement | null>(null)
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
 let sourceSelectionDecorations: monaco.editor.IEditorDecorationsCollection | null = null
+let aiActionDisposable: monaco.IDisposable | null = null
 let isApplyingExternalUpdate = false
 
 function clearSourceSelection(): void {
@@ -53,6 +57,52 @@ function revealSourceRange(range: SourceRange | null): void {
   ])
 }
 
+function getCurrentSourceSelection(): AiSourceSelection | null {
+  if (!editor) {
+    return null
+  }
+
+  const model = editor.getModel()
+  const selection = editor.getSelection()
+  if (!model || !selection || selection.isEmpty()) {
+    return null
+  }
+
+  const startOffset = model.getOffsetAt(selection.getStartPosition())
+  const endOffset = model.getOffsetAt(selection.getEndPosition())
+  const text = model.getValueInRange(selection)
+  if (!text.trim()) {
+    return null
+  }
+
+  return {
+    startOffset,
+    endOffset,
+    text
+  }
+}
+
+function registerAiSelectionAction(): void {
+  if (!editor) {
+    return
+  }
+
+  aiActionDisposable?.dispose()
+  aiActionDisposable = editor.addAction({
+    id: 'htmlfox-ai-edit-selection',
+    label: props.aiActionLabel,
+    contextMenuGroupId: 'navigation',
+    contextMenuOrder: 1.5,
+    precondition: 'editorHasSelection',
+    run: () => {
+      const selection = getCurrentSourceSelection()
+      if (selection) {
+        emit('aiEditSelection', selection)
+      }
+    }
+  })
+}
+
 onMounted(() => {
   if (!rootRef.value) {
     return
@@ -79,6 +129,7 @@ onMounted(() => {
     emit('update:modelValue', editor.getValue())
   })
 
+  registerAiSelectionAction()
   revealSourceRange(props.selectionRange)
 })
 
@@ -106,7 +157,15 @@ watch(
   }
 )
 
+watch(
+  () => props.aiActionLabel,
+  () => {
+    registerAiSelectionAction()
+  }
+)
+
 onBeforeUnmount(() => {
+  aiActionDisposable?.dispose()
   sourceSelectionDecorations?.clear()
   editor?.dispose()
 })

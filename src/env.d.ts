@@ -1,5 +1,11 @@
 /// <reference types="vite/client" />
-import type { AiEditPayload, AiEditResult, AiSettingsInput, AiSettingsView } from './services/aiTypes'
+import type {
+  AiEditPayload,
+  AiEditResult,
+  AiSettingsInput,
+  AiSettingsView,
+  AiTestResult
+} from './services/aiTypes'
 
 type FilePayload = {
   path: string
@@ -16,6 +22,7 @@ declare global {
       listRecentFiles: () => Promise<string[]>
       loadAiSettings: () => Promise<AiSettingsView>
       saveAiSettings: (settings: AiSettingsInput) => Promise<AiSettingsView>
+      testAiConnection: (settings: AiSettingsInput) => Promise<AiTestResult>
       runAiEdit: (payload: AiEditPayload) => Promise<AiEditResult>
     }
   }
